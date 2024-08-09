@@ -180,7 +180,7 @@ def import_measured_curves(fname, machine='Syn-Pla'):
         curve.time =       measurement_data[5][1]
         curve.machine = machine
         curve.particle = 1 if measurement_data[7][1] == 'ELE' else 0       # 1 = electrones    0 = fotones
-        curve.energy = float(measurement_data[7][2])
+        curve.energy = int(measurement_data[7][2])
         curve.depth = '' if curve.coordinate == 'Z' else float(measurement_data[21][3])   #mm
         curve.SSD = int(measurement_data[8][1])/10  #cm
         curve.field_size = int(measurement_data[6][1])/10     #[Y,X] solo cuadrado y simetrico
