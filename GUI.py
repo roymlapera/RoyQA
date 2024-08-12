@@ -50,10 +50,19 @@ def AnalisisPerfiles():
 
     VentanaParametrosGamma()
 
-    Perfiles_cal = curv.IngresaPerfilCalculadoMONACO(filename_cal)
-    Perfiles_med = curv.IngresaPerfilMedido(filename_med)
+    Perfiles_med = curv.import_measured_curves(filename_med, machine='P')  #HARDCODEADO PARA ESTA DOSIMETRIA
+    Perfiles_cal = curv.import_calculated_curves(filename_cal, machine='P')  #HARDCODEADO PARA ESTA DOSIMETRIA
+    print('hardcodeado a maquina platform, cambiar en importacion curvas')
+
+    print('Medido:')
+    for curve in Perfiles_med:
+        curv.print_curve_data(curve)
+    print('Calculado:')
+    for curve in Perfiles_cal:
+        curv.print_curve_data(curve)
 
     Perfiles_med, Perfiles_cal = curv.ProcesaCurva(Perfiles_med,Perfiles_cal,espaciamiento=0.5,sigma_suavizado=0.00005)
+
 
     curv.Analiza_Y_Grafica_Perfiles(Perfiles_med,Perfiles_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False)
 
@@ -62,8 +71,15 @@ def AnalisisPDDs():
 
     VentanaParametrosGamma()
 
-    PDDs_cal = curv.IngresaPDDCalculadoMONACO(filename_cal)
-    PDDs_med = curv.IngresaPDDMedido(filename_med)
+    PDDs_med = curv.import_measured_curves(filename_med, machine='P')
+    PDDs_cal = curv.import_calculated_curves(filename_cal, machine='P')
+
+    print('Medido:')
+    for curve in PDDs_med:
+        curv.print_curve_data(curve)
+    print('Calculado:')
+    for curve in PDDs_cal:
+        curv.print_curve_data(curve)
 
 
     PDDs_med, PDDs_cal = curv.ProcesaCurva(PDDs_med,PDDs_cal,espaciamiento=0.2,sigma_suavizado=0.0005)
@@ -79,9 +95,8 @@ def ElegirArchivosCurvas():
 
     filename_cal =  filedialog.askopenfilename(
                     title='Seleccionar dosis calculada',
-                    filetypes=(('Archivo de datos','*.1'),
-                               ('Archivo de datos','*.2'),
-                                ('Todos los archivos','*.*')))
+                    filetypes=(('Archivo de datos','*.*'),
+                                ('Todos los archivos','*.1')))
 
     return filename_med, filename_cal
 
