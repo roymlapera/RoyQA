@@ -32,6 +32,7 @@ class Curve():
         machine = ''
         particle = 0
         energy = ''
+        detector = ' '
 
 def Convert(string): 
     li = list(string.split(" ")) 
@@ -46,111 +47,8 @@ def print_curve_data(curve):
               f'DFS:         {curve.SSD}, '
               f'TC:          {curve.field_size}, '
               f'Coordenada:  {curve.coordinate}, '
-              f'Profundidad: {curve.depth}')
-
-# def IngresaPerfilMedido(fname):
-
-#     a = np.genfromtxt(fname,dtype=str, delimiter='\n', skip_header=1, skip_footer=1)
-
-#     fname = os.path.split(fname)[1].split('.')[0]
-
-#     l = []
-#     for s in a: 
-#         s = s.replace('<','')
-#         s = s.replace('>','')
-#         s = s.replace('+','')
-#         l.append(Convert(s))
-
-#     curvas = []
-
-#     for e in l:
-#         if e[0] == '$STOM':
-#             aux = []
-#             continue
-#         if e[0] == '$ENOM': 
-#             curvas.append(aux)
-#             continue
-#         else: aux.append(e)
-
-#     Perfiles = []
-
-#     print('\n'+'Datos de perfiles medidos ingresados:')
-
-#     for i in range(len(curvas)):
-#         perfil = Curva()
-
-#         perfil.coordinate  = str(curvas[i][6][1])
-#         perfil.fecha       = str(curvas[i][1][1])
-#         perfil.depth = str(curvas[i][10][1])
-#         perfil.dfp         = str(curvas[i][9][2])
-#         perfil.tc          = str(curvas[i][4][1])
-#         perfil.energia     = fname.split(' ')[1].upper()
-#         perfil.equipo      = fname.split(' ')[0].upper()
-        
-#         perfil.relative_dose       = np.array(curvas[i][11:], dtype=float)[:,3]
-
-#         if(perfil.coordinate=='X'):
-#             perfil.axis     = np.array(curvas[i][11:], dtype=float)[:,0]
-#         else:
-#             perfil.axis     = np.array(curvas[i][11:], dtype=float)[:,1]
-
-#         Perfiles.append(perfil)
-
-#     print('Datos de dosis ingresada:')
-    
-#     for perfil in Perfiles:
-#         print('Equipo: %s, DFP: %s, TC: %s, Z: %s, axis: %s, Energía: %s' % (perfil.equipo, perfil.dfp, perfil.tc, perfil.depth, perfil.coordinate, perfil.energia) )
-
-#     return Perfiles
-
-# def IngresaPDDMedido(fname):
-
-#     a = np.genfromtxt(fname,dtype=str, delimiter='\n', skip_header=1, skip_footer=1)
-
-#     fname = os.path.split(fname)[1].split('.')[0]
-
-#     l = []
-#     for s in a: 
-#         s = s.replace('<','')
-#         s = s.replace('>','')
-#         s = s.= []
-#             continue
-#         if e[0] == '$ENOM': 
-#             curvas.append(aux)
-#             continue
-#         else: aux.append(e)
-
-#     PDDs = []
-
-#     print('\n'+'Datos de pdds medidos ingresados:')
-
-#     for i in range(len(curvas)):
-#         PDD = Curva()
-
-#         PDD.coordinate  = str(curvas[i][6][1])
-#         PDD.fecha       = str(curvas[i][1][1])
-#         PDD.depth = '-'
-#         PDD.dfp         = str(curvas[i][9][2])
-#         PDD.tc          = str(curvas[i][4][1])
-#         PDD.energia     = fname.split(' ')[1].upper()
-#         PDD.equipo      = fname.split(' ')[0].upper()
-        
-#         PDD.relative_dose       = np.array(curvas[i][11:], dtype=float)[:,3]
-
-#         PDD.axis     = np.array(curvas[i][11:], dtype=float)[:,2]  #ACA VA 2 EN LUGAR DE 0 ASI AGARRA LA COLUMNA DE Z
-
-#         PDDs.append(PDD)
-
-#         print('Equipo: %s, DFP: %s, TC: %s, axis: %s, Energía: %s' % (PDD.equipo, PDD.dfp, PDD.tc, PDD.coordinate, PDD.energia) )
-
-#     return PDDsreplace('+','')
-#         l.append(Convert(s))
-
-#     curvas = []
-
-#     for e in l:
-#         if e[0] == '$STOM':
-#             aux 
+              f'Profundidad: {curve.depth}, '
+              f'Detector:    {curve.detector}')
 
 def import_measured_curves(fname, machine):
     
@@ -158,23 +56,23 @@ def import_measured_curves(fname, machine):
         start_x, start_y, start_z = measurement_data[19][1:]
         end_x, end_y, end_z = measurement_data[20][1:]
 
-        if(start_z == end_z):
-            if(start_y == end_y):
+        if(start_x == end_x and start_y == end_y):
+            if (float(start_x) == 0 and float(start_y) == 0):
+                return 'Z'
+            else: 
+                print('PDD no está en CAX!')
+        elif(start_z == end_z):
+            if(float(start_y) == 0):
                 return 'X'
-            elif(start_x == end_x):
+            elif(float(start_x) == 0):
                 return 'Y'
             else:
                 print('Perfil diagonal!')
-        elif (start_x == end_x and start_y == end_y):
-            if (start_x == '0.0' and start_y == '0.0'):
-                return 'Z'
-            else: 
-                print('PDD no está en CAX.')
         else:
-            print('No se puede determinar coordinate de curva.')
+            print('No se puede determinar coordinada de curva.')
  
     def initialize_curve_from_data(curve: Curve, measurement_data: List[str]) -> Curve:
-        '''Curve class atribute asignment based in measurent_data.'''
+        '''Curve instance atribute asignment based in measurent_data.'''
         curve.type = 'M'
         curve.coordinate = coordinate_classifier(measurement_data)    # a lo largo de X,Y,Z
         curve.date =       measurement_data[4][1]
@@ -186,20 +84,18 @@ def import_measured_curves(fname, machine):
         curve.SSD = float(measurement_data[8][1])/10  #cm
         curve.field_size = float(measurement_data[6][1])/10     #[Y,X] solo cuadrado y simetrico
 
-        scan_data = np.array(measurement_data[21:][:][1:])[:,1:].astype(float)
+        scan_data = np.array(measurement_data[21:])[:,1:].astype(float)    #  [:,1:] = no tomo la columna de '='
 
         curve.relative_dose = scan_data[:,3]
 
         if curve.coordinate == 'X':
-            curve.axis = scan_data[:,0]
+            curve.axis = scan_data[:,0]    
         elif curve.coordinate == 'Y':
             curve.axis = scan_data[:,1]
         else:
             curve.axis = scan_data[:,2]
 
     raw_data = np.genfromtxt(fname, dtype=str, delimiter='\n', skip_header=2, skip_footer=0)
-
-    # print('Metadata de  dosis medida ingresada:')
 
     # Cosmetica de parsing
     curve_set = []
