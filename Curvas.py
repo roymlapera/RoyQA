@@ -4,6 +4,7 @@ from scipy.ndimage import gaussian_filter1d
 import itertools
 import pymedphys
 from typing import List
+from datetime import datetime
 
 from tkinter import filedialog, messagebox
 import tkinter as tk
@@ -24,15 +25,15 @@ class Curve():
         coordinate = ''    # a lo largo de X,Y,Z
         date = ''
         time = ''
-        depth = ''
-        SSD = ''
-        field_size = np.array([])      #[Y,X] rectangular y simetrico
+        depth = float
+        SSD = float
+        field_size = float      #cuadrado y simetrico
         axis = np.array([])
         relative_dose = np.array([])
         machine = ''
         particle = 0
-        energy = ''
-        detector = ' '
+        energy = float
+        detector = ''
 
 def Convert(string): 
     li = list(string.split(" ")) 
@@ -50,9 +51,21 @@ def print_curve_data(curve):
               f'Profundidad: {curve.depth}, '
               f'Detector:    {curve.detector}')
 
-def import_measured_curves(fname, machine):
+def import_measured_curves(fname):
+
+    def normalize_date(date_string):
+        # Intenta analizar la fecha con varios formatos
+        for format in ('%Y-%m-%d', '%d-%m-%Y', '%m-%d-%Y', '%Y/%m/%d', '%d/%m/%Y', '%m/%d/%Y', '%B %d, %Y', '%d %B %Y'):
+            try:
+                date_object = datetime.strptime(date_string, format)
+                return date_object.strftime('%d/%m/%Y')
+            except ValueError:
+                continue
+        
+        # Si ningún formato coincide, devuelve una cadena de error
+        return "Invalid date format"
     
-    def coordinate_classifier(measurement_data):
+    def coordinate_classifier_ASCII(measurement_data):
         start_x, start_y, start_z = measurement_data[19][1:]
         end_x, end_y, end_z = measurement_data[20][1:]
 
@@ -70,9 +83,9 @@ def import_measured_curves(fname, machine):
                 print('Perfil diagonal!')
         else:
             print('No se puede determinar coordinada de curva.')
- 
-    def initialize_curve_from_data(curve: Curve, measurement_data: List[str]) -> Curve:
-        '''Curve instance atribute asignment based in measurent_data.'''
+
+    def initialize_curve_from_ASCII_data(curve: Curve, measurement_data: List[str]) -> Curve:
+        '''Asignación de atributos de la instancia de Curve basada en measurent_data en archivo en formato ASCII.'''
         curve.type = 'M'
         curve.coordinate = coordinate_classifier(measurement_data)    # a lo largo de X,Y,Z
         curve.date =       measurement_data[4][1]
@@ -88,33 +101,99 @@ def import_measured_curves(fname, machine):
 
         curve.relative_dose = scan_data[:,3]
 
-        if curve.coordinate == 'X':
-            curve.axis = scan_data[:,0]    
+        if curve.coordinate == 'X':         # LAS ORIENTACIONES Y NOMBRES DE LOS EJES PARECEN ESTAR EN FORMATO SERVO != FORMATO USADO
+            curve.axis = scan_data[:,0]     # SE SUGIERE USAR ARCHIVOS CSV
         elif curve.coordinate == 'Y':
             curve.axis = scan_data[:,1]
         else:
             curve.axis = scan_data[:,2]
 
-    raw_data = np.genfromtxt(fname, dtype=str, delimiter='\n', skip_header=2, skip_footer=0)
+    def ASCII_data_importing_parsing(fname: str, curve_set: List[str]) -> None:
+        '''Cosmetica de parsing para archivo ASCII.'''
+        raw_data = np.genfromtxt(fname, dtype=str, delimiter='\n', skip_header=2, skip_footer=0)
 
-    # Cosmetica de parsing
+        measurement_data = []
+
+        for s in raw_data: 
+            s = [s.replace(' ', '') for s in s.split('\t')]
+            
+            if s[0] == '%VNR1.0':
+                curve = Curve()
+                measurement_data.clear()
+                continue
+            elif s[0] == ':EOM': 
+                initialize_curve_from_ASCII_data(curve, measurement_data)
+                # print_curve_data(curve)
+                curve_set.append(curve)
+            else: 
+                measurement_data.append(s)
+
+    def initialize_curve_from_CSV_data(curve: Curve, current_data_block: List[str]) -> Curve:
+        '''Asignación de atributos de la instancia de Curve basada en measurent_data en archivo en formato CSV.'''
+
+        metadata = [row[1] for row in current_data_block[:15]]
+        scan_data = [[float(num.replace(',', '.')) for num in sublist] for sublist in current_data_block[18:]]
+        scan_data = np.array(scan_data, dtype=float)[:,[1, 0, 2, 5]]  # X, Y, Z, Ratio (relative_dose)
+
+        curve.type = 'M'
+        curve.date = normalize_date(metadata[0].split()[0])
+        curve.time = metadata[0].split()[1]
+        curve.machine = 'P' if metadata[1] == ' Platform Accelerator' else 'S'
+        curve.particle = 0 if metadata[2].split()[1] == 'MV' else 1       # 1 = electrones    0 = fotones
+        curve.energy = float(metadata[2].split()[0])
+        curve.detector = metadata[5].split('(')[0].strip().replace(" ", "")
+        curve.SSD = float(metadata[8].split()[0])/10  #cm
+        curve.field_size = float(metadata[9].split()[0])/10 #cm    # solo cuadrado y simetrico
+
+        coordinate_scant_type_dict = {'Crossline': 'X', 'Inline': 'Y', 'Beam': 'Z'}
+        curve.coordinate = coordinate_scant_type_dict[metadata[12].strip()]
+
+        curve.depth = '' if curve.coordinate == 'Z' else float(scan_data[0,2])   #mm
+
+        if curve.coordinate == 'X':         
+            curve.axis = scan_data[:,0]     
+        elif curve.coordinate == 'Y':
+            curve.axis = scan_data[:,1]
+        else:
+            curve.axis = scan_data[:,2]
+
+        curve.relative_dose = scan_data[:,3]
+
+    def CSV_data_importing_parsing(fname: str, curve_set: List[str]) -> None:
+        '''Cosmetica de parsing para archivo CSV.'''
+
+        current_data_block = []
+        with open(fname, 'r') as file:
+            for line in file:
+                # Eliminar cualquier espacio en blanco extra (incluyendo saltos de línea)
+                stripped_line = line.strip().split(";")
+                
+                # Comenzar un nuevo bloque si la línea comienza con "Measurement time:"
+                if stripped_line[0] == "Measurement time:":
+                    current_data_block = []
+                    curve = Curve()
+                
+                # Agregar la línea al bloque actual
+                current_data_block.append(stripped_line)
+                
+                # Si la línea está vacía y la línea anterior también lo estaba, cerrar el bloque
+                if stripped_line[0] == '' and (len(current_data_block) > 1 and current_data_block[-2][0] == ''):
+
+                    current_data_block = current_data_block[:-2]   #elimino los elementos sin nada del final
+                    
+                    initialize_curve_from_CSV_data(curve, current_data_block)
+                    # print_curve_data(curve)
+                    curve_set.append(curve)
+
+                    current_data_block = []
+
     curve_set = []
-    measurement_data = []
-    for s in raw_data: 
-        s = [s.replace(' ', '') for s in s.split('\t')]
-        
-        if s[0] == '%VNR1.0':
-            curve = Curve()
-            measurement_data.clear()
-            continue
-        elif s[0] == ':EOM': 
-            initialize_curve_from_data(curve, measurement_data)
-            # print_curve_data(curve)
-            curve_set.append(curve)
-        else: 
-            measurement_data.append(s)
+    # ASCII_data_importing_parsing(fname, curve_set)
+    CSV_data_importing_parsing(fname, curve_set)
 
     return curve_set
+    
+
 
 def import_calculated_curves(monaco_calculation_file_path, machine):
 
