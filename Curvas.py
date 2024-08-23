@@ -5,6 +5,7 @@ import itertools
 import pymedphys
 from typing import List
 from datetime import datetime
+from pathlib import Path
 
 from tkinter import filedialog, messagebox
 import tkinter as tk
@@ -23,8 +24,8 @@ class Curve():
     def __init__(self):
         type = ''     #medido o calculado
         coordinate = ''    # a lo largo de X,Y,Z
-        date = ''
-        time = ''
+        date = ' '
+        time = ' '
         depth = float
         SSD = float
         field_size = float      #cuadrado y simetrico
@@ -33,7 +34,7 @@ class Curve():
         machine = ''
         particle = 0
         energy = float
-        detector = ''
+        detector = ' '
 
 def Convert(string): 
     li = list(string.split(" ")) 
@@ -193,17 +194,19 @@ def import_measured_curves(fname):
 
     return curve_set
     
+def import_calculated_monaco_ref_data(monaco_folder):
+    ref_data_paths = [str(path) for path in Path(monaco_folder).rglob('*') if path.is_file()]
 
+    ref_curves = []
+    for path in ref_data_paths:
+        ref_curves.extend(import_calculated_curves(path))
 
-def import_calculated_curves(monaco_calculation_file_path, machine):
+    return ref_curves
+
+def import_calculated_curves(monaco_calculation_file_path):
 
     def get_energy_from_filename(file_name):
-        electron_energies = ['06', '09', '12', '15']
-        file_extension_index = int(file_name.split('.')[::-1][0]) - 1
-        return float(electron_energies[file_extension_index])
-    
-    def get_depth_from_filename(file_name):
-        electron_energies = ['18.3', '28.1', '39.4', '47.4']
+        electron_energies = ['06', '09', '12', '15', '18']
         file_extension_index = int(file_name.split('.')[::-1][0]) - 1
         return float(electron_energies[file_extension_index])
 
@@ -214,32 +217,28 @@ def import_calculated_curves(monaco_calculation_file_path, machine):
     curves = []
     curve1 = Curve()
     curve1.type = 'C'
-    curve1.machine = machine
     curve1.date = ''
     curve1.time = ''
+    curve1.detector = 'N/A'
     curve1.depth = ''
 
-    # print(monaco_calculation_file_path.split('/')[::-1])
+    # ['BLUEoELECoPLAT.ELECoPLAT.Coronal.216.00.4', '06x06', 'DFS 100', 'ELECTRONES', 'PLATFORM', 'MONACO', 'INTECNUS---RoyQA', 'Roy', '8 - Físicos Médicos', 'P:']
 
     try:
-        if 'ELECTRONES' in monaco_calculation_file_path:
-            curve1.particle = 1   #electrones
-            # Attempt to unpack the last 6 elements after reversing the split result
-            file_name, curve1.field_size, curve1.SSD = monaco_calculation_file_path.split('/')[::-1][:3]
-
+        splitted_path = monaco_calculation_file_path.split("\\")[::-1][:5]
+        # print(splitted_path)
+        file_name, curve1.field_size, curve1.SSD, curve1.energy, curve1.machine = splitted_path
+        
+        if 'ELECTRONES' in curve1.energy:
+            curve1.particle = 1   #electrones     
             curve1.energy = get_energy_from_filename(file_name)
             
-            # Ensure that exactly 6 variables are unpacked (including the placeholder '_')
-            
-            assert len(monaco_calculation_file_path.split('/')[::-1][:3]) == 3
+            assert len(splitted_path) == 5
         else:
             curve1.particle = 0   #fotones
-
-            file_name, curve1.field_size, curve1.SSD, curve1.energy = monaco_calculation_file_path.split('/')[::-1][:4]
-
             curve1.energy = float(curve1.energy[1:])  #X06 -> 06
             
-            assert len(monaco_calculation_file_path.split('/')[::-1][:4]) == 4
+            assert len(splitted_path) == 5
 
     except ValueError:
         # This block runs if the unpacking fails due to a mismatch in the number of elements
@@ -251,6 +250,13 @@ def import_calculated_curves(monaco_calculation_file_path, machine):
         print("Error: Not enough elements to unpack.")
         return []
 
+    if 'SYNERGY' in curve1.machine:
+        curve1.machine = 'S'
+    elif 'PLATFORM' in curve1.machine:
+        curve1.machine = 'P'
+    else:
+        'Error al identificar la maquina en los datos de referencia de Monaco.'
+        
     curve1.SSD = float(curve1.SSD.split(' ')[1])
     curve1.field_size = float(curve1.field_size.split('x')[0])
 
@@ -270,24 +276,29 @@ def import_calculated_curves(monaco_calculation_file_path, machine):
     dose2D_size = [ int(metadata[14].split(',')[1]) , int(metadata[14].split(',')[2])  ] #mm
     spatial_resolution = float(metadata[15].split(',')[-1])  #mm
 
-    # A_axis = np.arange(upper_left_point[0], dose2D_size[0]*spatial_resolution+upper_left_point[0], spatial_resolution)
-    # B_axis = np.arange(upper_left_point[1], dose2D_size[1]*spatial_resolution+upper_left_point[1], spatial_resolution)
-    # dose_array = xr.DataArray(dose2D, dims=['A', 'B'], coords={'A': A_axis, 'B': B_axis})
+    # print(dose2D.shape)
+    hor_axis = np.arange(int(upper_left_point[0]), dose2D_size[0] + int(upper_left_point[0]), spatial_resolution)
+    vert_axis = np.arange(int(upper_left_point[1]), int(upper_left_point[1]) - dose2D_size[1], -spatial_resolution)
+    
+    vert_mid_point_idx  = np.where(vert_axis == 0)[0][0]
+    hor_mid_point_idx = np.where(hor_axis == 0)[0][0]
+
+    # La posicion del origen del fantoma cambia segun donde se definio el isocentro en Monaco,
+    # esta funcion corrige si no esta en SSD = 100 cm
+    # requiere que la SSD este en cm y los ejes en mm.
+    z_axis_correction_based_on_setup = lambda ssd: 10.0*ssd-1000.0
 
     if dose_plane_type == 'Coronal':
         #Depth:
-        if curve1.particle == 1: 
-            curve1.depth = get_depth_from_filename(file_name)
-        else:
-            curve1.depth = 250.0 - float(file_name.split('.')[3])
+        curve1.depth = (250.0 - float(metadata[3].split()[1])*10.0)  #mm
         
         # Aca creo dos perfiles porque el txt tiene la informacion de dos curvas 
         # segun si se exporto coronal o transversal
 
         # Cargo coordinate, axis y relative_dose del perfil en X
         curve1.coordinate    = 'X' 
-        curve1.axis          = np.arange(int(upper_left_point[0]), dose2D_size[0] + int(upper_left_point[0]), spatial_resolution)
-        curve1.relative_dose = dose2D[int(upper_left_point[0]), :]
+        curve1.axis          = hor_axis
+        curve1.relative_dose = dose2D[vert_mid_point_idx, :].squeeze()
 
         curves.append(curve1)
 
@@ -295,20 +306,28 @@ def import_calculated_curves(monaco_calculation_file_path, machine):
         curve2 = copy.copy(curve1)
 
         curve2.coordinate    = 'Y' 
-        curve2.axis          = np.arange(-int(upper_left_point[1]), dose2D_size[1] - int(upper_left_point[1]), spatial_resolution)
-        curve2.relative_dose = dose2D[:, int(upper_left_point[1])]
+        curve2.axis          = vert_axis[::-1]
+        curve2.relative_dose = dose2D[:, hor_mid_point_idx][::-1].squeeze()
 
         curves.append(curve2)
 
     if dose_plane_type == 'Transverse':
         # Cargo coordinate, axis y relative_dose del PDD
+        curve1.depth = 'N/A'
 
         curve1.coordinate    = 'Z' 
-        curve1.axis          = np.arange(-int(upper_left_point[1])+1, dose2D_size[1] - int(upper_left_point[1])+1, spatial_resolution)
-        curve1.relative_dose = dose2D[:, int(upper_left_point[1])]
 
+        curve1.axis          = vert_axis + z_axis_correction_based_on_setup(curve1.SSD)
+        idx = np.where(curve1.axis == 0)[0][0]
+        curve1.axis          = (- curve1.axis)[(idx-1):]
+        curve1.relative_dose = dose2D[:, hor_mid_point_idx].squeeze()[(idx-1):]
+        # print(idx, curve1.axis.shape, curve1.relative_dose.shape)
 
         curves.append(curve1)   
+
+    # for curve in curves:
+    #     print_curve_data(curve)
+        # print(curve.axis.shape, curve.relative_dose.shape)
 
     return curves
 
@@ -404,16 +423,23 @@ def Analiza_Y_Grafica_Perfiles(Perfiles_med,Perfiles_cal,dose_threshold,dta,cuto
             datos = []
             # datos = AnalizaRegionesPerfil(Perfiles_med[i],Perfiles_cal[j])
             Grafica_Perfiles(Perfiles_med[i],Perfiles_cal[j],datos,i,dose_threshold,dta,cutoff) 
-        elif( Perfiles_med[i].field_size        == Perfiles_cal[j].field_size          and 
-            Perfiles_med[i].depth == Perfiles_cal[j].depth and
-            Perfiles_med[i].SSD         == Perfiles_cal[j].SSD         and 
-            Perfiles_med[i].machine      == Perfiles_cal[j].machine      and 
-            Perfiles_med[i].coordinate  == Perfiles_cal[j].coordinate  and
-            Perfiles_med[i].energy  == Perfiles_cal[j].energy):
+        elif( 
+            Perfiles_med[i].machine     == Perfiles_cal[j].machine and 
+            Perfiles_med[i].particle    == Perfiles_cal[j].particle and 
+            Perfiles_med[i].energy      == Perfiles_cal[j].energy and
+            Perfiles_med[i].SSD         == Perfiles_cal[j].SSD and 
+            Perfiles_med[i].field_size  == Perfiles_cal[j].field_size and 
+            Perfiles_med[i].depth       == Perfiles_cal[j].depth and
+            Perfiles_med[i].coordinate  == Perfiles_cal[j].coordinate):
             datos = []
-            # datos = AnalizaRegionesPerfil(Perfiles_med[i],Perfiles_cal[j])
+
             print('Match!')
+            print_curve_data(Perfiles_med[i])
+            print_curve_data(Perfiles_cal[j])
+            
             Grafica_Perfiles(Perfiles_med[i],Perfiles_cal[j],datos,i,dose_threshold,dta,cutoff)
+        # else:
+        #     print('No hay match!')
         
 def Analiza_Y_Grafica_PDDs(PDDs_med,PDDs_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False):
     idx_med = np.arange( len(PDDs_med) )
@@ -422,13 +448,17 @@ def Analiza_Y_Grafica_PDDs(PDDs_med,PDDs_cal,dose_threshold,dta,cutoff, COMPARE_
     for i,j in itertools.product( idx_med , idx_cal ):  
         if(COMPARE_ANYWAY):
             Grafica_PDDs(PDDs_med[i],PDDs_cal[j],i,dose_threshold,dta,cutoff)  
-        elif( PDDs_med[i].field_size        == PDDs_cal[j].field_size          and
-            PDDs_med[i].SSD         == PDDs_cal[j].SSD         and 
-            PDDs_med[i].machine      == PDDs_cal[j].machine      and 
-            PDDs_med[i].coordinate  == PDDs_cal[j].coordinate  and
-            PDDs_med[i].energy     == PDDs_cal[j].energy):
+        elif(
+            PDDs_med[i].machine    == PDDs_cal[j].machine and 
+            PDDs_med[i].particle   == PDDs_cal[j].particle and
+            PDDs_med[i].energy     == PDDs_cal[j].energy and 
+            PDDs_med[i].SSD        == PDDs_cal[j].SSD and 
+            PDDs_med[i].field_size == PDDs_cal[j].field_size and
+            PDDs_med[i].coordinate == PDDs_cal[j].coordinate):
             print('Match!')
             Grafica_PDDs(PDDs_med[i],PDDs_cal[j],i,dose_threshold,dta,cutoff)
+        # else:
+        #     print('No hay match!')
         
 def Grafica_Perfiles(Perfiles_med, Perfiles_cal, datos, i, dose_threshold, dta, cutoff):
     # Create a Toplevel window
@@ -450,51 +480,51 @@ def Grafica_Perfiles(Perfiles_med, Perfiles_cal, datos, i, dose_threshold, dta, 
     gamma = pymedphys.gamma(Perfiles_cal.axis, Perfiles_cal.relative_dose, Perfiles_med.axis, Perfiles_med.relative_dose,
                             dose_percent_threshold=dose_threshold, distance_mm_threshold=dta,
                             lower_percent_dose_cutoff=cutoff)
+    
+    x_min, x_max = Perfiles_med.axis[0], Perfiles_med.axis[-1]
+    i_min, i_max = np.where(Perfiles_cal.axis == x_min)[0][0], np.where(Perfiles_cal.axis == x_max)[0][0]
+    reduced_gamma = gamma[i_min:i_max]
+
+    passing_points = np.count_nonzero(reduced_gamma <= 1)
+    valid_points = np.count_nonzero(~np.isnan(reduced_gamma))
+    passing_percentage = (passing_points / valid_points) * 100
 
     # Plot on the same axes
     ax1.plot(Perfiles_cal.axis, Perfiles_cal.relative_dose, marker='.', markersize=0, linewidth=1, label="Monaco",
              color='b')
     ax1.plot(Perfiles_med.axis, Perfiles_med.relative_dose, marker='.', markersize=2, linewidth=0, label=str(Perfiles_med.date),
              color='g')
-    ax2.plot(Perfiles_cal.axis, gamma, marker='+', markersize=0, linewidth=0.5,
-             label='Gamma ' + str(dose_threshold) + '% ' + str(dta) + 'mm', color='r')
+    ax2.plot(Perfiles_cal.axis, 
+             gamma, 
+             marker='+', 
+             markersize=0, 
+             linewidth=0.5,
+             label='Gamma ' + str(dose_threshold) + '% ' + str(dta) + 'mm -> '+str(round(passing_percentage, 1))+'%', 
+             color='r')
     ax2.axhline(y=1, color='r', linewidth=0.5)
 
-    ax1.set_title(str(Perfiles_cal.machine) + ' - QA ANUAL ' + str(Perfiles_med.date)[6:] + ' - Perfil en ' + str(
-        Perfiles_med.coordinate) +
-                  ' - DFP ' + str(float(Perfiles_med.SSD)) +
+    ax1.set_title(str(Perfiles_cal.machine) + 
+                  ' - QA ANUAL ' + str(Perfiles_med.date)[6:] + 
+                  ' - Perfil en ' + str(Perfiles_med.coordinate) +
+                  ' - E ' + str(float(Perfiles_med.energy)) +
+                  ' - DFS ' + str(float(Perfiles_med.SSD)) +
                   ' cm - TC ' + str(Perfiles_med.field_size) +
                   ' cm2 - Prof: ' + str(float(Perfiles_med.depth)) +
                   ' cm - BluePhantom2',
                   fontsize=7)
 
-    # ax1.text(min(Perfiles_med.axis) / 3.5, 30,
-    #          'Dif (min,max) de %D y dta:' + '\n'
-    #          '\n'
-    #          'Umbra izq:    ' + '(' + str(datos[0]) + ' %, ' + str(datos[1]) + ' %)' + '\n'
-    #                                                                                       'Penumbra izq: ' + '(' + str(
-    #              datos[2]) + ' mm, ' + str(datos[3]) + ' mm)' + '\n'
-    #                                                                'Plateau:      ' + '(' + str(datos[4]) + ' %, ' + str(
-    #              datos[5]) + ' %)' + '\n'
-    #                               'Penumbra der: ' + '(' + str(datos[6]) + ' mm, ' + str(datos[7]) + ' mm)' + '\n'
-    #                                                                                                            'Umbra der:    ' + '(' + str(
-    #              datos[8]) + ' %, ' + str(datos[9]) + ' %)' + '\n'
-    #                                                           '\n'
-    #                                                           'Umbra<10%' + '\n'
-    #                                                                           '10%<Penumbra<90%' + '\n'
-    #                                                                                                   'Plateau>90%' + '\n',
-    #          fontsize=6,
-    #          bbox={'facecolor': 'grey', 'alpha': 0.3, 'pad': 10})
-
     ax1.set_xlim([max(Perfiles_med.axis.min(), Perfiles_cal.axis.min()),
                   min(Perfiles_med.axis.max(), Perfiles_cal.axis.max())])
 
     ax1.set(xlabel='axis ' + str(Perfiles_med.coordinate) + '(mm)', ylabel='Dosis (%)')
-    ax1.legend()
+    legend1 = ax1.legend(loc='upper right', bbox_to_anchor=(1, 1))
     ax1.grid()
 
     ax2.set_ylim([0, 5])
-    ax2.legend()
+    legend2 = ax2.legend(loc='upper right', bbox_to_anchor=(1, 0.85))
+
+    # # Adjust the legends so they do not overlap
+    # plt.gca().add_artist(legend1)
 
     # Use the FigureCanvasTkAgg constructor with the existing figure and window
     canvas = FigureCanvasTkAgg(fig, ventana_grafico)
@@ -503,7 +533,7 @@ def Grafica_Perfiles(Perfiles_med, Perfiles_cal, datos, i, dose_threshold, dta, 
 
     print('exportado')
 
-    # fig.savefig('Perfil'+str(i)+'.pdf', format='pdf', orientation='landscape', bbox_inches='tight')
+    fig.savefig('Resultados/Perfil'+str(i)+'.pdf', format='pdf', orientation='landscape', bbox_inches='tight')
 
 def Grafica_PDDs(PDDs_med,PDDs_cal,i,dose_threshold,dta,cutoff):
     ventana_grafico = tk.Toplevel()
@@ -522,27 +552,48 @@ def Grafica_PDDs(PDDs_med,PDDs_cal,i,dose_threshold,dta,cutoff):
     gamma = pymedphys.gamma(PDDs_cal.axis, PDDs_cal.relative_dose, PDDs_med.axis, PDDs_med.relative_dose,
                             dose_percent_threshold=dose_threshold, distance_mm_threshold=dta, 
                             lower_percent_dose_cutoff=cutoff)
+    
+    x_min, x_max = PDDs_med.axis[0], PDDs_med.axis[-1]
+    i_min, i_max = np.where(PDDs_cal.axis == x_min)[0][0], np.where(PDDs_cal.axis == x_max)[0][0]
+    reduced_gamma = gamma[i_min:i_max]
+
+    passing_points = np.count_nonzero(reduced_gamma <= 1)
+    valid_points = np.count_nonzero(~np.isnan(reduced_gamma))
+    passing_percentage = (passing_points / valid_points) * 100
 
     ax1.plot(PDDs_cal.axis, PDDs_cal.relative_dose, marker='.', markersize=0, linewidth=1, label="Monaco", color='b')
     ax1.plot(PDDs_med.axis, PDDs_med.relative_dose, marker='.', markersize=2, linewidth=0, label=str(PDDs_med.date), color='g')
-    ax2.plot(PDDs_cal.axis, gamma, marker='+', markersize=0, linewidth=0.5, label='Gamma '+str(dose_threshold)+'% '+str(dta)+'mm', color='r')
+    ax2.plot(PDDs_cal.axis, 
+             gamma, 
+             marker='+', 
+             markersize=0, 
+             linewidth=0.5, 
+             label='Gamma '+str(dose_threshold)+'% '+str(dta)+' -> '+str(round(passing_percentage, 1))+'%', 
+             color='r')
     ax2.axhline(y = 1 , color='r', linewidth=0.5)
 
-    ax1.set_title(str(PDDs_cal.machine)+' - QA ANUAL '+str(PDDs_med.date)[6:]+' - PDD '+
-                    ' - DFS = '+str(float(PDDs_med.SSD))+
-                    ' cm - TC '+str(PDDs_med.field_size)+
-                    '- BluePhantom2', 
+    ax1.set_title(str(PDDs_cal.machine)+
+                ' - QA ANUAL '+str(PDDs_med.date)[6:]+
+                ' - PDD '+
+                ' - E '+str(float(PDDs_med.energy))+
+                ' - DFS '+str(float(PDDs_med.SSD))+
+                ' cm - TC '+str(PDDs_med.field_size)+
+                '- BluePhantom2', 
                     fontsize=7)
 
     ax1.set_xlim([max(PDDs_med.axis.min(),PDDs_cal.axis.min()), min(PDDs_med.axis.max(),PDDs_cal.axis.max())])
     ax1.set(xlabel='Profundidad (mm)', ylabel='Dosis (%)')
-    ax1.legend()
+    legend1 = ax1.legend(loc='upper right', bbox_to_anchor=(1, 1))
     ax1.grid()
 
     ax2.set_ylim([0, 5])
-    
+    legend2 = ax2.legend(loc='upper right', bbox_to_anchor=(1, 0.85))
+
+    # # Adjust the legends so they do not overlap
+    # plt.gca().add_artist(legend1)
+        
     canvas  = FigureCanvasTkAgg(fig,ventana_grafico)
     toolbar = NavigationToolbar2Tk(canvas,ventana_grafico)
     canvas._tkcanvas.pack()
 
-    # fig.savefig('Pdd'+str(i)+'.pdf', orientation='landscape', format='pdf', bbox_inches='tight')
+    fig.savefig('Resultados/Pdd'+str(i)+'.pdf', orientation='landscape', format='pdf', bbox_inches='tight')

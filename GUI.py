@@ -8,6 +8,8 @@ import Curvas as curv
 # import Starshot as star
 # import Picketfence as pf
 
+monaco_calculation_file_path = 'P:/8 - Físicos Médicos/Roy/INTECNUS---RoyQA/MONACO'
+
 class VentanaPrincipal:
                                    
     def __init__(self):     # cuando inicializo esta clase se crea una ventana con prop predeterminadas   
@@ -46,13 +48,12 @@ def TestBox():
 
 
 def AnalisisPerfiles():
-    filename_med, filename_cal = ElegirArchivosCurvas()
+    filename_med = ElegirArchivosCurvas()
 
     VentanaParametrosGamma()
 
-    Perfiles_med = curv.import_measured_curves(filename_med, machine='P')  #HARDCODEADO PARA ESTA DOSIMETRIA
-    Perfiles_cal = curv.import_calculated_curves(filename_cal, machine='P')  #HARDCODEADO PARA ESTA DOSIMETRIA
-    print('hardcodeado a maquina platform, cambiar en importacion curvas')
+    Perfiles_med = curv.import_measured_curves(filename_med)  #HARDCODEADO PARA ESTA DOSIMETRIA
+    Perfiles_cal = curv.import_calculated_monaco_ref_data(monaco_calculation_file_path)  #HARDCODEADO PARA ESTA DOSIMETRIA
 
     print('Medido:')
     for curve in Perfiles_med:
@@ -63,16 +64,15 @@ def AnalisisPerfiles():
 
     Perfiles_med, Perfiles_cal = curv.ProcesaCurva(Perfiles_med,Perfiles_cal,espaciamiento=0.5,sigma_suavizado=0.00005)
 
-
     curv.Analiza_Y_Grafica_Perfiles(Perfiles_med,Perfiles_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False)
 
 def AnalisisPDDs():
-    filename_med, filename_cal = ElegirArchivosCurvas()
+    filename_med = ElegirArchivosCurvas()
 
     VentanaParametrosGamma()
 
-    PDDs_med = curv.import_measured_curves(filename_med, machine='P')
-    PDDs_cal = curv.import_calculated_curves(filename_cal, machine='P')
+    PDDs_med = curv.import_measured_curves(filename_med)
+    PDDs_cal = curv.import_calculated_monaco_ref_data(monaco_calculation_file_path)
 
     print('Medido:')
     for curve in PDDs_med:
@@ -90,15 +90,10 @@ def AnalisisPDDs():
 def ElegirArchivosCurvas():
     filename_med =  filedialog.askopenfilename(
                     title='Seleccionar dosis medida',
-                    filetypes=(('Archivo ASCII','*.asc'),
+                    filetypes=(('Archivo ASCII','*.csv'),
                                 ('Todos los archivos','*.*')))
 
-    filename_cal =  filedialog.askopenfilename(
-                    title='Seleccionar dosis calculada',
-                    filetypes=(('Archivo de datos','*.*'),
-                                ('Todos los archivos','*.1')))
-
-    return filename_med, filename_cal
+    return filename_med
 
 def VentanaParametrosGamma():
     root= tk.Toplevel()
