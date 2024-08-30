@@ -15,7 +15,8 @@ class VentanaPrincipal:
     def __init__(self):     # cuando inicializo esta clase se crea una ventana con prop predeterminadas   
         self.ventana = tk.Tk()                            
         self.ventana.title('~ RoyQA ~')                                              #titulo de la ventana
-        self.ventana.state('zoomed')
+        self.ventana.geometry("800x600")  # Width = 600, Height = 400
+        self.ventana.resizable(False, False)
         
         logo = ImageTk.PhotoImage(Image.open("logo.png").resize((274, 117)))    #importo imagen 
                         
@@ -52,17 +53,19 @@ def AnalisisPerfiles():
 
     VentanaParametrosGamma()
 
-    Perfiles_med = curv.import_measured_curves(filename_med)  #HARDCODEADO PARA ESTA DOSIMETRIA
-    Perfiles_cal = curv.import_calculated_monaco_ref_data(monaco_calculation_file_path)  #HARDCODEADO PARA ESTA DOSIMETRIA
+    measured_curves = curv.import_measured_curves(filename_med)
+    calculated_curves = curv.import_Monaco_calculated_curves_from_database()
+
+    is_profile = lambda curve: curve.coordinate == 'X' or curve.coordinate == 'Y'
+
+    Perfiles_med = [curve for curve in measured_curves if is_profile(curve)]
+    Perfiles_cal = [curve for curve in calculated_curves if is_profile(curve)]
 
     print('Medido:')
     for curve in Perfiles_med:
         curv.print_curve_data(curve)
-    print('Calculado:')
-    for curve in Perfiles_cal:
-        curv.print_curve_data(curve)
 
-    Perfiles_med, Perfiles_cal = curv.ProcesaCurva(Perfiles_med,Perfiles_cal,espaciamiento=0.5,sigma_suavizado=0.00005)
+    Perfiles_med, Perfiles_cal = curv.ProcesaCurvas(Perfiles_med,Perfiles_cal,espaciamiento=0.2,sigma_suavizado=0.00005)
 
     curv.Analiza_Y_Grafica_Perfiles(Perfiles_med,Perfiles_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False)
 
@@ -71,18 +74,27 @@ def AnalisisPDDs():
 
     VentanaParametrosGamma()
 
-    PDDs_med = curv.import_measured_curves(filename_med)
-    PDDs_cal = curv.import_calculated_monaco_ref_data(monaco_calculation_file_path)
+    measured_curves = curv.import_measured_curves(filename_med)
+    calculated_curves = curv.import_Monaco_calculated_curves_from_database()
+
+    is_pdd = lambda curve: curve.coordinate == 'Z'
+
+    PDDs_med = [curve for curve in measured_curves if is_pdd(curve)]
+    PDDs_cal = [curve for curve in calculated_curves if is_pdd(curve)]
+
+    PDDs_med, PDDs_cal = curv.ProcesaCurvas(PDDs_med,PDDs_cal,espaciamiento=0.2,sigma_suavizado=0.00005)
 
     print('Medido:')
     for curve in PDDs_med:
-        curv.print_curve_data(curve)
+        if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
+            curv.print_curve_data(curve)
+            print(curv.get_R50(curve))
     print('Calculado:')
     for curve in PDDs_cal:
-        curv.print_curve_data(curve)
+        if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
+            curv.print_curve_data(curve)
+            print(curv.get_R50(curve))
 
-
-    PDDs_med, PDDs_cal = curv.ProcesaCurva(PDDs_med,PDDs_cal,espaciamiento=0.2,sigma_suavizado=0.0005)
 
     curv.Analiza_Y_Grafica_PDDs(PDDs_med,PDDs_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False)
 
