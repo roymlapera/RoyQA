@@ -336,6 +336,20 @@ def import_calculated_curves(monaco_calculation_file_path):
     if dose_plane_type == 'Coronal':
         #Depth:
         curve1.depth = round(250.0 - float(metadata[3].split()[1])*10.0, 1)  #mm
+
+        print('Para Synergy, se exportaron planos con profundidades levemente distintas'+
+        'para los diferentes conos. '+
+        'Se suma 0.5 mm al valor de profundidad de dosis de SOLO esos perfiles de Synergy en cono 6x6'+
+        'y se resta 0.5 mm en cono 20x20 para que puedan hacer match'+
+        'con los perfiles medidos en esas profundidades especificas de R85: 18.3 mm, 28.1 mm, 39.4 mm, 47.4 mm.')
+        syn_R85_depths_6x6 = [17.8, 27.6, 38.9, 46.9] #mm
+        yn_R85_depths_20x20 = [18.8, 28.6, 39.9, 47.9] #mm
+
+        if curve1.machine == 'S' and curve1.particle == 1 and curve1.depth in syn_R85_depths_6x6:
+            curve1.depth += 0.5 #mm
+        if curve1.machine == 'S' and curve1.particle == 1 and curve1.depth in yn_R85_depths_20x20:
+            curve1.depth -= 0.5 #mm
+        
         
         # Aca creo dos perfiles porque el txt tiene la informacion de dos curvas 
         # segun si se exporto coronal o transversal
@@ -476,7 +490,7 @@ def SuavizaYNormaliza(curva, sigma, espaciamiento):
         elif curva.field_size >= 10.0 and curva.coordinate != 'Z':   #perfiles campos grandes
             epsilon = 20    # +- 2 cm del cax
         else:
-            epsilon = 10
+            epsilon = 3
     else:
         epsilon = 0
 
@@ -796,7 +810,7 @@ def Save_results_to_PDF(plot_data):
             'particle': 'Partícula',
             'energy': 'E_MV/MeV',
             'detector': 'Detector/SN',
-            'pass_value_%': 'Gamma_%',
+            'pass_value_%': 'Gamma_pass',
             }, inplace=True)
         
         # ------------------------------    PDF   ----------------------------------
@@ -847,6 +861,22 @@ def Save_results_to_PDF(plot_data):
             ('BACKGROUND', (0, 1), (-1, -1), colors.white),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ])
+
+        # Aplica color a la celda basado en condicion
+        gamma_col_index = df.columns.get_loc('Gamma_pass')
+        for i, row in enumerate(df.itertuples(), start=1):
+            gamma_value = getattr(row, 'Gamma_pass')
+            if gamma_value > 99.9:
+                table_style.add('BACKGROUND', (gamma_col_index, i), (gamma_col_index, i), colors.lightblue)
+            if gamma_value <= 99.9 and gamma_value >= 95.0:
+                table_style.add('BACKGROUND', (gamma_col_index, i), (gamma_col_index, i), colors.lightgreen)
+            if gamma_value < 95.0 and gamma_value >= 80.0:
+                table_style.add('BACKGROUND', (gamma_col_index, i), (gamma_col_index, i), colors.gold)
+            if gamma_value < 80.0 and gamma_value >= 50.0:
+                table_style.add('BACKGROUND', (gamma_col_index, i), (gamma_col_index, i), colors.orange)
+            if gamma_value < 50.0:
+                table_style.add('BACKGROUND', (gamma_col_index, i), (gamma_col_index, i), colors.red)
+
         table.setStyle(table_style)
 
         # Add the table to the elements
@@ -910,6 +940,10 @@ def Save_results_to_PDF(plot_data):
         df = _update_dataframe_info_from_curve(df, curve, dose_threshold, dta, passing_percentage)
         figures.append(fig)
         
+    if df.empty: 
+        print('No hay resultados en Dataframe de resultados')
+        return
+
     _add_results_table_to_pdf(pdf_elements, df)
 
     for fig in figures: _add_plot_figures_to_pdf(pdf_elements, fig)

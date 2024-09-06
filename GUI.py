@@ -64,6 +64,11 @@ def AnalisisPerfiles():
     print('Medido:')
     for curve in Perfiles_med:
         curv.print_curve_data(curve)
+        
+    print('Calculado:')
+    for curve in Perfiles_cal:
+        if curve.machine == Perfiles_med[0].machine:
+            curv.print_curve_data(curve)
 
     Perfiles_med, Perfiles_cal = curv.ProcesaCurvas(Perfiles_med,Perfiles_cal,espaciamiento=0.2,sigma_suavizado=0.00005)
 
@@ -86,14 +91,16 @@ def AnalisisPDDs():
 
     print('Medido:')
     for curve in PDDs_med:
+        curv.print_curve_data(curve)
         if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
-            curv.print_curve_data(curve)
-            print(curv.get_R50(curve))
+            print(f'R50: {curv.get_R50(curve)} mm')
+
     print('Calculado:')
     for curve in PDDs_cal:
-        if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
+        if curve.machine == PDDs_med[0].machine:
             curv.print_curve_data(curve)
-            print(curv.get_R50(curve))
+            if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
+                print(f'R50: {curv.get_R50(curve)} mm')
 
 
     curv.Analiza_Y_Grafica_PDDs(PDDs_med,PDDs_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False)
