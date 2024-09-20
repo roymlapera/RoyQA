@@ -188,7 +188,11 @@ def import_measured_curves(fname):
         curve.energy = float(metadata[2].split()[0])
         curve.detector = metadata[5].split('(')[0].strip().replace(" ", "")
         curve.SSD = float(metadata[8].split()[0])/10  #cm
-        curve.field_size = float(metadata[9].split()[0])/10 #cm    # solo cuadrado y simetrico
+
+        if metadata[9].split()[0] == metadata[9].split()[2]:
+            curve.field_size = float(metadata[9].split()[0])/10 #cm    # solo cuadrado y simetrico
+        else:
+            curve.field_size = None    # TC no es cuadrado, no se procesa
 
         coordinate_scant_type_dict = {'Crossline': 'X', 'Inline': 'Y', 'Beam': 'Z'}
         curve.coordinate = coordinate_scant_type_dict[metadata[12].strip()]
@@ -228,7 +232,8 @@ def import_measured_curves(fname):
                     
                     initialize_curve_from_CSV_data(curve, current_data_block)
                     # print_curve_data(curve)
-                    curve_set.append(curve)
+                    if curve.field_size != None:
+                        curve_set.append(curve)
 
                     current_data_block = []
 
@@ -791,7 +796,7 @@ def Save_results_to_PDF(plot_data):
         df['machine'].replace({'S': 'Synergy', 'P': 'Platform'}, inplace=True)
         df['particle'].replace({0: 'Fotones', 1: 'Electrones'}, inplace=True)
 
-        dummy_dict = df.loc[:, df.nunique() == 1].iloc[0].to_dict()
+        dummy_dict = df.loc[:, df.nunique() == 1].iloc[0].to_dict()   #detecto aquellas columnas que todos los valores son iguales
         
         df.drop(['id', 'type', 'time', 'dose_threshold_%', 'dta_mm'], axis=1, inplace=True)
 
@@ -812,10 +817,18 @@ def Save_results_to_PDF(plot_data):
             'detector': 'Detector/SN',
             'pass_value_%': 'Gamma_pass',
             }, inplace=True)
-        
+
+        # print(df.columns)
+
         # ------------------------------    PDF   ----------------------------------
 
-        year = dummy_dict['date'].split('/')[-1]
+        try:
+            # Intentar extraer el año del diccionario dummy_dict
+            year = dummy_dict['date'].split('/')[-1]
+        except KeyError:
+            # En caso de que no esté en dummy_dict, extraerlo del dataframe original (caso de proyecto con mediciones de diferentes dias)
+            year = df['Fecha'].iloc[0].split('/')[-1]
+
         if  'S' in dummy_dict['machine']:
             machine = 'SYNERGY FULL SN:153868'
         else:
