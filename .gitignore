@@ -162,6 +162,6 @@ cython_debug/
 #.idea/
 
 # Se ignoran carpetas con contenido clínico
-/Aceptacion-vs-MONACO/
-/QA-Anual-2024/
-/Resultados/
+/Curvas medidas en myQA en formato CSV/
+/Resultados Analisis Gamam 1D/
+/Planos de dosis exportados de MONACO/

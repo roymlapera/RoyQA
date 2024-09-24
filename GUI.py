@@ -27,10 +27,10 @@ class VentanaPrincipal:
         self.ventana.config(menu=self.menubar)                                     # Lo asignamos a la base
 
         filemenu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label='Nuevo Análisis', menu=filemenu)
+        self.menubar.add_cascade(label='Nuevo Análisis Gamma-1D', menu=filemenu)
         filemenu.add_command(label='Análisis PDDs', command=AnalisisPDDs)
         filemenu.add_command(label='Análisis Perfiles', command=AnalisisPerfiles) 
-        # filemenu.add_command(label='Análisis Starshots', command=AnalisisStarshot)
+        # filemenu.add_command(label='Análisis Winston-Lutz', command=AnalisisStarshot)
         # filemenu.add_command(label='Análisis Picket Fence', command=AnalisisPicketFence)             #.#
         filemenu.add_separator()
         filemenu.add_command(label='Salir', command=self.ventana.quit)
@@ -92,15 +92,15 @@ def AnalisisPDDs():
     print('Medido:')
     for curve in PDDs_med:
         curv.print_curve_data(curve)
-        if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
-            print(f'R50: {curv.get_R50(curve)} mm')
+        # if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
+        #     print(f'R50: {curv.get_R50(curve)} mm')
 
     print('Calculado:')
     for curve in PDDs_cal:
         if curve.machine == PDDs_med[0].machine:
             curv.print_curve_data(curve)
-            if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
-                print(f'R50: {curv.get_R50(curve)} mm')
+            # if curve.field_size == 20 and curve.coordinate == 'Z' and curve.particle == 1:
+            #     print(f'R50: {curv.get_R50(curve)} mm')
 
 
     curv.Analiza_Y_Grafica_PDDs(PDDs_med,PDDs_cal,dose_threshold,dta,cutoff, COMPARE_ANYWAY=False)
